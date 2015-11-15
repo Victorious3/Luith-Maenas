@@ -13,21 +13,44 @@ import scala.reflect.internal.Symbols
 trait Token {
     val properties: PropertySet = new PropertySet
     val children: ListBuffer[Token] = new ListBuffer
-    val symbol: Symbol
     
+    // Private variables
+    private var _symbol: Symbol = _ 
+    private var _factory: TokenFactory[_] = _
+    private var _parent: Token = _
+    private var _tree: Tree = _
+    
+    /** Contains the symbol that was used to construct this tokem */
+    def symbol = _symbol
     /** Contains the factory that was used to construct this token */
-    var factory: TokenFactory[this.type] = _
+    def factory = _factory
     /** Contains the parent token */
-    var parent: Token = _
+    def parent = _parent
+    
+    def before() : this.type = this
+    def after() : this.type = this
     
     final override def equals(other: Any) = other match {
         case other: this.type => other.symbol == this.symbol
         case _ => false
     }
     
-    final override lazy val hashCode = symbol.hashCode
+    final override def hashCode = symbol.hashCode
     
     final def isLeaf = children.isEmpty
+    final def isRoot = parent != null
+}
+
+object Token {
+    /** Used to create a new token instance **/
+    def apply[T <: Token](constructor: () => T, factory: TokenFactory[_], parent: Token, tree: Tree, symbol: Symbol = Symbol("")): T = {
+        val token = constructor()
+        token._symbol = symbol
+        token._factory = factory
+        token._parent = parent
+        token._tree = tree
+        return token
+    }
 }
 
 /**
@@ -41,7 +64,16 @@ trait TokenFactory[T <: Token] {
     /** List of post-converters, use this if you need more control over the order */
     val after = ListBuffer[T => T]()
     
-    def create(tree: Tree) : T
+    /** Creates a new token **/
+    final def create(tree: Tree, parent: Token) : T = {
+        var token = createImpl(tree, parent).before()
+        before foreach {converter =>
+            token = converter(token)
+        }
+        return token
+    }
+    
+    def createImpl(tree: Tree, parent: Token) : T
     
     /** Adds a new listener to the token factory that gets invoked upon walking the
      *  tree inwards, e.g before constructing the children
@@ -59,12 +91,18 @@ trait TokenFactory[T <: Token] {
 }
 
 object TokenFactory {
-    class WordFactory[T <: Token](val default: (Symbol, Tree) => T) extends TokenFactory[T] {
-        val tokens: TrieMap[Symbol, (Symbol, Tree) => T] = new TrieMap
+    class WordFactory[T <: Token](val default: () => T) extends TokenFactory[T] {
+        val tokens: TrieMap[Symbol, () => T] = new TrieMap
         
-        override def create(tree: Tree) : T = {
+        override def createImpl(tree: Tree, parent: Token) : T = {
             val symbol = POS.toSymbol(tree.firstChild.label)
-            tokens.get(symbol).getOrElse(default).apply(symbol, tree)
+            return Token(
+               constructor = tokens.get(symbol).getOrElse(default), 
+               symbol      = symbol, 
+               factory     = this, 
+               parent      = parent, 
+               tree        = tree
+            )
         }
         
         def ++= (factory: WordFactory[T]) : WordFactory[T] = {
@@ -72,24 +110,25 @@ object TokenFactory {
             return this
         }
     
-        def += (kv : (Symbol, (Symbol, Tree) => T)) : WordFactory[T] = {
+        def += (kv : (Symbol, () => T)) : WordFactory[T] = {
             tokens += kv
             return this
         }
     }
     
     object SentenceFactory extends TokenFactory[Sentence] {
-        override def create(tree: Tree) : Sentence = new Sentence(tree)
+        override def createImpl(tree: Tree, parent: Token) : Sentence = {
+            Token(() => new Sentence(), this, parent, tree)
+        }
     }
 }
 
-class Sentence(val tree: Tree) extends Token {
-    override val symbol = Symbol("")
-}
+class Sentence extends Token
 
-class Entity(val symbol: Symbol, tree: Tree) extends Token
+class Entity extends Token
 
-class Property(val symbol: Symbol, tree: Tree) extends Token
+class Property extends Token
+
 
 trait Combineable extends Property {
     def += (property: this.type): this.type = this
@@ -99,7 +138,7 @@ trait Target extends Property {
     
 }
 
-class Action(symbol: Symbol, tree: Tree) extends Property(symbol, tree) with Combineable {
+class Action extends Property with Combineable {
     
     val subActions: ListBuffer[Action] = ListBuffer()
     

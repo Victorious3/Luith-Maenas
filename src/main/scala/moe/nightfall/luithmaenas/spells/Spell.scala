@@ -5,10 +5,12 @@ import edu.stanford.nlp.trees.Tree
 /**
  * @author "Vic Nightfall"
  */
-object Spell {
-    def create(spell: String) : Spell = null
+class Spell extends Action {
+    
 }
 
-class Spell(tree: Tree) extends Action('spell, tree) {
-    
+object SpellFactory extends TokenFactory[Spell] {
+    override def createImpl(tree: Tree, parent: Token) : Spell = {
+        Token(() => new Spell, this, parent, tree)
+    }
 }
