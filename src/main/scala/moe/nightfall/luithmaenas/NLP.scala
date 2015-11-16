@@ -40,6 +40,7 @@ object NLP {
 object POS {
     implicit class Category(val symbol: Symbol) {
        final override def equals(other: Any) : Boolean = {
+           if (other == this) return true
            val symbol = other match {
                case other: Symbol => other
                case other: Category => other.symbol
@@ -57,7 +58,7 @@ object POS {
     }
     
     implicit def toCategory(label: Label) : Category = Category(Symbol(label.value))
-    implicit def toSymbol(label: Label) : Symbol = Symbol(label.value)
+    implicit def toSymbol(label: Label) : Symbol = Symbol(label.value())
     
     val coordinating_conjunction = Category('CC)
     val cardinal_number          = Category('CN)
@@ -122,11 +123,11 @@ object POS {
 class Document(content: String) {
     val annotation = new Annotation(content)
     
-    lazy val sentences: Seq[Sentence] = 
-        JavaConversions.asScalaBuffer(annotation.get(classOf[SentencesAnnotation])).map(new Sentence(_))
+    lazy val sentences: Seq[SentenceMap] = 
+        JavaConversions.asScalaBuffer(annotation.get(classOf[SentencesAnnotation])).map(new SentenceMap(_))
 }
 
-class Sentence(content: CoreMap) {
+class SentenceMap(content: CoreMap) {
     lazy val tree: Tree = content.get(classOf[TreeAnnotation])
     lazy val dependencies: SemanticGraph = content.get(classOf[CollapsedCCProcessedDependenciesAnnotation])
 }

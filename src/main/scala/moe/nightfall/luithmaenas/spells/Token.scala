@@ -6,26 +6,32 @@ import edu.stanford.nlp.trees.Tree
 import scala.collection.mutable.ListBuffer
 import scala.collection.concurrent.TrieMap
 import scala.reflect.internal.Symbols
+import moe.nightfall.luithmaenas.SentenceMap
+import moe.nightfall.luithmaenas.SentenceMap
+import moe.nightfall.luithmaenas.SentenceMap
+import edu.stanford.nlp.ling.CoreLabel
+import edu.stanford.nlp.ling.Label
 
 /**
  * @author "Vic Nightfall"
  */
 trait Token {
     val properties: PropertySet = new PropertySet
-    val children: ListBuffer[Token] = new ListBuffer
     
-    // Private variables
-    private var _symbol: Symbol = _ 
-    private var _factory: TokenFactory[_] = _
-    private var _parent: Token = _
-    private var _tree: Tree = _
+    private var _context: Context = _
     
-    /** Contains the symbol that was used to construct this tokem */
-    def symbol = _symbol
+    def context = _context
+    /** Contains the symbol that was used to construct this token */
+    def symbol = context.symbol
     /** Contains the factory that was used to construct this token */
-    def factory = _factory
+    def factory = context.factory
     /** Contains the parent token */
-    def parent = _parent
+    def parent = context.parent
+    
+    def apply(context: Context) : this.type = {
+        this._context = context
+        return this
+    }
     
     def before() : this.type = this
     def after() : this.type = this
@@ -37,21 +43,20 @@ trait Token {
     
     final override def hashCode = symbol.hashCode
     
-    final def isLeaf = children.isEmpty
+    final def isLeaf = properties.isEmpty
     final def isRoot = parent != null
 }
 
-object Token {
-    /** Used to create a new token instance **/
-    def apply[T <: Token](constructor: () => T, factory: TokenFactory[_], parent: Token, tree: Tree, symbol: Symbol = Symbol("")): T = {
-        val token = constructor()
-        token._symbol = symbol
-        token._factory = factory
-        token._parent = parent
-        token._tree = tree
-        return token
-    }
+case class Context (
+    val tree: Tree,
+    val factory: TokenFactory[Token],
+    val parent: Token,
+    val sentence: SentenceMap
+) {
+    val label = new CoreLabel(tree.label())
+    val symbol = POS.toSymbol(label)
 }
+
 
 /**
  * `TokenFactory` is used to create `Token`. 
@@ -65,15 +70,15 @@ trait TokenFactory[T <: Token] {
     val after = ListBuffer[T => T]()
     
     /** Creates a new token **/
-    final def create(tree: Tree, parent: Token) : T = {
-        var token = createImpl(tree, parent).before()
+    final def create(context: Context) : T = {
+        var token = createImpl(context).before()
         before foreach {converter =>
             token = converter(token)
         }
         return token
     }
     
-    def createImpl(tree: Tree, parent: Token) : T
+    def createImpl(context: Context) : T
     
     /** Adds a new listener to the token factory that gets invoked upon walking the
      *  tree inwards, e.g before constructing the children
@@ -94,15 +99,9 @@ object TokenFactory {
     class WordFactory[T <: Token](val default: () => T) extends TokenFactory[T] {
         val tokens: TrieMap[Symbol, () => T] = new TrieMap
         
-        override def createImpl(tree: Tree, parent: Token) : T = {
-            val symbol = POS.toSymbol(tree.firstChild.label)
-            return Token(
-               constructor = tokens.get(symbol).getOrElse(default), 
-               symbol      = symbol, 
-               factory     = this, 
-               parent      = parent, 
-               tree        = tree
-            )
+        override def createImpl(context: Context) : T = {
+            val token = tokens.get(context.symbol).getOrElse(default).apply()
+            return token(context)
         }
         
         def ++= (factory: WordFactory[T]) : WordFactory[T] = {
@@ -117,8 +116,8 @@ object TokenFactory {
     }
     
     object SentenceFactory extends TokenFactory[Sentence] {
-        override def createImpl(tree: Tree, parent: Token) : Sentence = {
-            Token(() => new Sentence(), this, parent, tree)
+        override def createImpl(context: Context) : Sentence = {
+            new Sentence().apply(context)
         }
     }
 }
