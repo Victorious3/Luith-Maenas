@@ -1,16 +1,15 @@
-package moe.nightfall.luithmaenas.spells
+package moe.nightfall.luithmaenas.spells.token
 
-import moe.nightfall.luithmaenas.POS.Category
 import moe.nightfall.luithmaenas.POS
-import edu.stanford.nlp.trees.Tree
-import scala.collection.mutable.ListBuffer
+import scala.collection.JavaConversions
 import scala.collection.concurrent.TrieMap
-import scala.reflect.internal.Symbols
-import moe.nightfall.luithmaenas.SentenceMap
-import moe.nightfall.luithmaenas.SentenceMap
-import moe.nightfall.luithmaenas.SentenceMap
 import edu.stanford.nlp.ling.CoreLabel
-import edu.stanford.nlp.ling.Label
+import moe.nightfall.luithmaenas.SentenceMap
+import edu.stanford.nlp.ling.IndexedWord
+import scala.collection.mutable.ListBuffer
+import moe.nightfall.luithmaenas.Actor
+import moe.nightfall.luithmaenas.spells.PropertySet
+import moe.nightfall.luithmaenas.spells.Spell
 
 /**
  * @author "Vic Nightfall"
@@ -19,17 +18,20 @@ trait Token {
     val properties: PropertySet = new PropertySet
     
     private var _context: Context = _
+    private var _symbol: Symbol = _
+    private var _name: String = _
     
-    def context = _context
+    /** Context of this token, only available while parsing, returns null on the server side */
+    def context = _context 
     /** Contains the symbol that was used to construct this token */
-    def symbol = context.symbol
-    /** Contains the factory that was used to construct this token */
-    def factory = context.factory
-    /** Contains the parent token */
-    def parent = context.parent
-    
-    def apply(context: Context) : this.type = {
+    def symbol = _symbol
+    /** Name of this token */
+    def name = _name
+
+    def context(context: Context) : this.type = {
         this._context = context
+        this._symbol = context.symbol
+        this._name = context.name
         return this
     }
     
@@ -44,19 +46,43 @@ trait Token {
     final override def hashCode = symbol.hashCode
     
     final def isLeaf = properties.isEmpty
-    final def isRoot = parent != null
+    final def isRoot = context.parent != null
 }
 
+/** The `Context` of a token contains all relevant information to parse a token. */
 case class Context (
-    val tree: Tree,
-    val factory: TokenFactory[Token],
-    val parent: Token,
-    val sentence: SentenceMap
+    /** The factory that was used to construct this token */
+    factory: TokenFactory[Token],
+    /** The spell that constructed this token */
+    root: Spell,
+    /** The parent of this token, or null if this is the root node */
+    parent: Token,
+    /** The token associated to this context */
+    self: Token,
+    /** The label, contains grammatical information */
+    label: CoreLabel,
+    /** The sentence, contains the dependency tree and the relations */
+    sentence: SentenceMap
 ) {
-    val label = new CoreLabel(tree.label())
     val symbol = POS.toSymbol(label)
+    val name = label.value
+    val word = new IndexedWord(label)
+    
+    val incoming = JavaConversions.asScalaBuffer(dependencies.getIncomingEdgesSorted(word))
+    val outgoing = JavaConversions.asScalaBuffer(dependencies.getOutEdgesSorted(word))
+    
+    def dependencies = sentence.dependencies
+    
+    def incoming(relation: String) : Option[Token] = {
+        incoming.find(_.getRelation.getShortName == relation).flatMap(edge => token(edge.getGovernor))
+    }
+    
+    def outgoing(relation: String) : Option[Token] = {
+        outgoing.find(_.getRelation.getShortName == relation).flatMap(edge => token(edge.getDependent))
+    }
+    
+    def token(word: IndexedWord) = root.token(word)
 }
-
 
 /**
  * `TokenFactory` is used to create `Token`. 
@@ -100,8 +126,7 @@ object TokenFactory {
         val tokens: TrieMap[Symbol, () => T] = new TrieMap
         
         override def createImpl(context: Context) : T = {
-            val token = tokens.get(context.symbol).getOrElse(default).apply()
-            return token(context)
+            return tokens.get(context.symbol).getOrElse(default).apply()
         }
         
         def ++= (factory: WordFactory[T]) : WordFactory[T] = {
@@ -117,7 +142,7 @@ object TokenFactory {
     
     object SentenceFactory extends TokenFactory[Sentence] {
         override def createImpl(context: Context) : Sentence = {
-            new Sentence().apply(context)
+            new Sentence()
         }
     }
 }
@@ -128,23 +153,24 @@ class Entity extends Token
 
 class Property extends Token
 
-
-trait Combineable extends Property {
-    def += (property: this.type): this.type = this
-}
-
 trait Target extends Property {
     
 }
 
-class Action extends Property with Combineable {
+trait Condition extends Property {
+    def apply(actor: Actor) : Boolean
+}
+
+class Action extends Property {
     
     val subActions: ListBuffer[Action] = ListBuffer()
     
-    final override def += (property: this.type): this.type = {
-        subActions += property
+    final def += (action: Action): Action = {
+        subActions += action
         return this
     }
+    
+    def act(actor: Actor) = {}
     
     lazy val condition: Option[Condition] = properties.find[Condition]
 }

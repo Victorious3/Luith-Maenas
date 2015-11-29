@@ -1,5 +1,7 @@
 package moe.nightfall.luithmaenas
 
+import moe.nightfall.luithmaenas.spells.token.Token
+import moe.nightfall.luithmaenas.spells.Spell
 import edu.stanford.nlp.pipeline.StanfordCoreNLP
 import java.util.Properties
 import edu.stanford.nlp.pipeline.Annotation
@@ -12,6 +14,7 @@ import edu.stanford.nlp.trees.Tree
 import edu.stanford.nlp.semgraph.SemanticGraph
 import edu.stanford.nlp.semgraph.SemanticGraphCoreAnnotations.CollapsedCCProcessedDependenciesAnnotation
 import edu.stanford.nlp.ling.Label
+import edu.stanford.nlp.ling.IndexedWord
 
 /**
  * @author "Vic Nightfall"
@@ -58,7 +61,7 @@ object POS {
     }
     
     implicit def toCategory(label: Label) : Category = Category(Symbol(label.value))
-    implicit def toSymbol(label: Label) : Symbol = Symbol(label.value())
+    implicit def toSymbol(label: Label) : Symbol = Symbol(label.value)
     
     val coordinating_conjunction = Category('CC)
     val cardinal_number          = Category('CN)
