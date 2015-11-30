@@ -10,7 +10,7 @@ import moe.nightfall.luithmaenas.spells.token.TokenFactory
 import moe.nightfall.luithmaenas.spells.token.TokenFactory.WordFactory
 import moe.nightfall.luithmaenas.spells.token.TokenFactory.SentenceFactory
 import moe.nightfall.luithmaenas.spells.token.Token
-import moe.nightfall.luithmaenas.spells.token.Entity
+import moe.nightfall.luithmaenas.spells.token.Object
 import moe.nightfall.luithmaenas.spells.token.Property
 import moe.nightfall.luithmaenas.spells.token.Action
 
@@ -23,7 +23,7 @@ object Grammar {
     val factories = mutable.Map[Category, TokenFactory[_]]()
     
     // Predefined Factories
-    val entityFactory   = new WordFactory(() => new Entity)
+    val entityFactory   = new WordFactory(() => new Object)
     val actionFactory   = new WordFactory(() => new Action)
     val propertyFactory = new WordFactory(() => new Property)
     
@@ -38,7 +38,7 @@ object Grammar {
     def factory[T <: Token](ct: Category) : Option[TokenFactory[T]] = factories.get(ct).asInstanceOf[Option[TokenFactory[T]]]
     def newFactory[T <: Token](ct: Category, tf: TokenFactory[T]) = factories += ct -> tf
     
-    def newEntity(symbol: Symbol, mapper: () => Entity) = {
+    def newEntity(symbol: Symbol, mapper: () => Object) = {
         entityFactory += symbol -> mapper
     }
     

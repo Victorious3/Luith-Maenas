@@ -114,7 +114,7 @@ object TokenFactory {
 
 class Sentence extends Token
 
-class Entity extends Token
+class Object extends Token
 
 class Property extends Token
 

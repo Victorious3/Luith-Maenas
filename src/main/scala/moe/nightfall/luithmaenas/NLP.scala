@@ -19,14 +19,37 @@ import edu.stanford.nlp.ling.IndexedWord
 /**
  * @author "Vic Nightfall"
  */
-object NLP { 
-    private var _pipeline: Option[StanfordCoreNLP] = None
-    def pipeline = {if (_pipeline.isEmpty) init(); _pipeline.get}
+object NLP {
     
-    def init() = {
-        val props = new Properties
-        props.setProperty("annotators", "tokenize, ssplit, pos, lemma, ner, parse, dcoref")
-        _pipeline = Some(new StanfordCoreNLP(props))
+    val annotators = Seq("tokenize", "ssplit", "pos", "lemma", "ner", "parse", "dcoref")
+    
+    private var _pipeline: Option[StanfordCoreNLP] = None
+    private var loadingStatus = "uninitialized"
+    
+    /** Can be used to monitor the loading status */
+    def status = loadingStatus
+    
+    def pipeline = {if (!isInitialized) init(); _pipeline.get}
+    
+    def isInitialized = !_pipeline.isEmpty
+    
+    private def loadAnnotator(nlp: StanfordCoreNLP, annotator: String) {
+        loadingStatus = annotator
+        nlp.addAnnotator(StanfordCoreNLP.getExistingAnnotator(annotator))
+    }
+    
+    def init() : Unit = this.synchronized {
+        // Check in order to avoid initializing twice, for concurrency reasons
+        if (isInitialized) return
+        
+        // Need to pass some empty properties here or else its going to initialize with some defaults...
+        val properties = new Properties()
+        properties.setProperty("annotators", "")
+        val nlp = new StanfordCoreNLP(properties, false) 
+        annotators.foreach(loadAnnotator(nlp, _))
+        loadingStatus = "initialized"
+        
+        _pipeline = Some(nlp)
     }
     
     def annotate(content: String) : Document = {

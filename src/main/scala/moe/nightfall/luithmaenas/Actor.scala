@@ -1,6 +1,7 @@
 package moe.nightfall.luithmaenas
 
-trait Actor {    
+trait Actor extends Any {
+    
     def mana: Float
     protected def mana_= (mana: Float)
 
